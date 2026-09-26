@@ -1,0 +1,10 @@
+project_id = "notion-workspace-crm"
+
+[functions.invite-workspace-member]
+verify_jwt = true
+
+[functions.accept-workspace-invite]
+verify_jwt = true
+
+[functions.preview-workspace-invite]
+verify_jwt = false
