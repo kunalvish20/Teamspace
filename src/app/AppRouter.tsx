@@ -10,6 +10,7 @@ const SignupPage = lazy(() => import('../pages/SignupPage').then((module) => ({ 
 const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage').then((module) => ({ default: module.ForgotPasswordPage })))
 const ResetPasswordPage = lazy(() => import('../pages/ResetPasswordPage').then((module) => ({ default: module.ResetPasswordPage })))
 const InvitePage = lazy(() => import('../pages/InvitePage').then((module) => ({ default: module.InvitePage })))
+const LandingPage = lazy(() => import('../pages/LandingPage').then((module) => ({ default: module.LandingPage })))
 const AppIndexPage = lazy(() => import('../pages/AppIndexPage').then((module) => ({ default: module.AppIndexPage })))
 const WorkspaceHomePage = lazy(() => import('../pages/WorkspaceHomePage').then((module) => ({ default: module.WorkspaceHomePage })))
 const DatabasePage = lazy(() => import('../pages/DatabasePage').then((module) => ({ default: module.DatabasePage })))
@@ -29,7 +30,7 @@ function Load({ children }: { children: ReactNode }) {
 export function AppRouter() {
   const authPage = (page: ReactNode) => devBypassEnabled ? <Navigate to="/app" replace /> : <Load>{page}</Load>
   return <Routes>
-    <Route path="/" element={<Navigate to="/app" replace />} />
+    <Route path="/" element={<Load><LandingPage /></Load>} />
     <Route path="/login" element={authPage(<LoginPage />)} />
     <Route path="/signup" element={authPage(<SignupPage />)} />
     <Route path="/forgot-password" element={authPage(<ForgotPasswordPage />)} />
