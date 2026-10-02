@@ -1,4 +1,4 @@
-import { type DragEvent, type FormEvent, useState } from 'react'
+import { type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -53,6 +53,7 @@ export function PropertyHeader({
   onDragEnd,
   onDragOver,
   onDrop,
+  onPointerReorder,
   isDragging,
 }: {
   property: DatabaseProperty
@@ -68,6 +69,7 @@ export function PropertyHeader({
   onDragEnd?: () => void
   onDragOver?: (event: DragEvent<HTMLDivElement>) => void
   onDrop?: (event: DragEvent<HTMLDivElement>) => void
+  onPointerReorder?: (event: ReactPointerEvent<HTMLButtonElement>) => void
   isDragging?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -105,6 +107,7 @@ export function PropertyHeader({
   return (
     <>
       <div
+        data-property-drop-id={property.id}
         className={`relative flex h-full items-center gap-1.5 px-2 text-xs font-medium text-neutral-500 ${isDragging ? 'opacity-45' : ''}`}
         onDragOver={onDragOver}
         onDrop={onDrop}
@@ -115,6 +118,7 @@ export function PropertyHeader({
             draggable
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
+            onPointerDown={onPointerReorder}
             title="Drag to reorder"
             aria-label={`Drag ${property.name} property`}
             className="cursor-grab rounded p-0.5 text-neutral-300 hover:bg-neutral-200 hover:text-neutral-600 active:cursor-grabbing"

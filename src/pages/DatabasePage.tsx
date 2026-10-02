@@ -60,7 +60,22 @@ export function DatabasePage() {
 
   const patchView = useMutation({ mutationFn: (patch: Parameters<typeof updateView>[1]) => { if (!activeView) throw new Error('No active view'); return updateView(activeView.id, patch) }, onSuccess: (saved) => { queryClient.setQueryData(databaseKeys.views(databaseId ?? ''), (current: typeof views.data) => current?.map((view) => view.id === saved.id ? saved : view)); void queryClient.invalidateQueries({ queryKey: ['database', databaseId, 'rows'] }) }, onError: (error) => push(error instanceof Error ? error.message : 'View update failed.', 'error') })
   const editView = useMutation({ mutationFn: ({ viewId, patch }: { viewId: string; patch: Partial<Pick<DatabaseView, 'name' | 'view_type'>> }) => updateView(viewId, patch), onSuccess: (saved) => { queryClient.setQueryData(databaseKeys.views(databaseId ?? ''), (current: typeof views.data) => current?.map((view) => view.id === saved.id ? saved : view)); void queryClient.invalidateQueries({ queryKey: ['database', databaseId, 'rows'] }) }, onError: (error) => push(error instanceof Error ? error.message : 'View update failed.', 'error') })
-  const reorderProperties = useMutation({ mutationFn: async (orderedIds: string[]) => { await Promise.all(orderedIds.map((propertyId, position) => updatePropertyPosition(propertyId, position))) }, onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: databaseKeys.properties(databaseId ?? '') }) }, onError: (error) => push(error instanceof Error ? error.message : 'Property reorder failed.', 'error') })
+  const reorderProperties = useMutation({
+    mutationFn: async (orderedIds: string[]) => { await Promise.all(orderedIds.map((propertyId, position) => updatePropertyPosition(propertyId, position))) },
+    onMutate: async (orderedIds) => {
+      const key = databaseKeys.properties(databaseId ?? '')
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<typeof properties.data>(key)
+      const order = new Map(orderedIds.map((id, index) => [id, index]))
+      queryClient.setQueryData<typeof properties.data>(key, (current) => current ? [...current].sort((a, b) => (order.get(a.id) ?? a.position) - (order.get(b.id) ?? b.position)).map((property, position) => ({ ...property, position })) : current)
+      return { key, previous }
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: databaseKeys.properties(databaseId ?? '') }) },
+    onError: (error, _orderedIds, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous)
+      push(error instanceof Error ? error.message : 'Property reorder failed.', 'error')
+    },
+  })
   const addProperty = useMutation({ mutationFn: ({ name, type, config }: { name: string; type: NewPropertyType; config?: Json }) => createProperty({ databaseId: databaseId ?? '', name, propertyType: type, config }), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: databaseKeys.properties(databaseId ?? '') }); push('Property added.', 'success') }, onError: (error) => push(error instanceof Error ? error.message : 'Could not add property.', 'error') })
 
   if (!databaseId || database.data === null) return <Navigate to={`/app/${workspace.slug}`} replace />
@@ -97,6 +112,17 @@ export function DatabasePage() {
     reorderProperties.mutate(next.map((property) => property.id))
   }
 
+  function commitRowValue(row: DatabaseRow, propertyId: string, value: Json | undefined) {
+    rowMutations.update.mutate({ row, propertyId, value })
+    if (dashboardRow?.id === row.id) {
+      const source = row.data && typeof row.data === 'object' && !Array.isArray(row.data) ? row.data : {}
+      const nextData = { ...source }
+      if (value === undefined || value === null || value === '') delete nextData[propertyId]
+      else nextData[propertyId] = value
+      setDashboardRow({ ...row, data: nextData, updated_at: new Date().toISOString() })
+    }
+  }
+
   const commonViewProps = { rows: visibleRows, properties: properties.data, canWrite, onOpenRow: (row: typeof rows[number]) => setSelectedRowId(row.id), onCreateRow: () => void createNewRow() }
 
   return <div className="flex h-[calc(100vh-44px)] min-h-0 flex-col md:h-screen">
@@ -120,13 +146,13 @@ export function DatabasePage() {
     {dashboardMode ? <div className="min-h-0 flex-1 overflow-y-auto"><DashboardView databaseId={databaseId} workspaceId={workspace.id} properties={properties.data} members={members.data} onOpenRow={(row) => { setDashboardRow(row); setSelectedRowId(row.id) }} onViewMain={() => navigate(`/app/${workspace.slug}/database/${databaseId}/view/${activeView?.id ?? views.data[0]?.id ?? ''}`)} /></div> : activeView ? <>
       <DatabaseToolbar search={search} onSearch={setSearch} view={activeView} properties={properties.data} canWrite={canWrite} onPatchView={(patch) => patchView.mutate(patch)} onAddProperty={() => setPropertyModal(true)} onReorderProperties={reorderProperty} />
       <div className="min-h-0 flex-1 overflow-auto">
-        {activeView.view_type === 'table' ? <DatabaseTable databaseId={databaseId} rows={rows} properties={properties.data} view={activeView} members={members.data} search={search} canWrite={canWrite} onCommit={(row, propertyId, value) => rowMutations.update.mutate({ row, propertyId, value })} onCreateRow={() => void createNewRow()} onCreateProperty={() => setPropertyModal(true)} onArchiveRow={(row) => rowMutations.archive.mutate(row)} onOpenRow={(row) => setSelectedRowId(row.id)} onReorderProperties={reorderProperty} hasNextPage={rowsQuery.hasNextPage} isFetchingNextPage={rowsQuery.isFetchingNextPage} onLoadMore={() => void rowsQuery.fetchNextPage()} /> : null}
-        {activeView.view_type === 'board' ? <DatabaseBoard {...commonViewProps} onCommit={(row, propertyId, value) => rowMutations.update.mutate({ row, propertyId, value })} /> : null}
+        {activeView.view_type === 'table' ? <DatabaseTable databaseId={databaseId} rows={rows} properties={properties.data} view={activeView} members={members.data} search={search} canWrite={canWrite} onCommit={commitRowValue} onCreateRow={() => void createNewRow()} onCreateProperty={() => setPropertyModal(true)} onArchiveRow={(row) => rowMutations.archive.mutate(row)} onOpenRow={(row) => setSelectedRowId(row.id)} onReorderProperties={reorderProperty} onPersistWidths={(widths) => patchView.mutate({ property_widths: widths })} hasNextPage={rowsQuery.hasNextPage} isFetchingNextPage={rowsQuery.isFetchingNextPage} onLoadMore={() => void rowsQuery.fetchNextPage()} /> : null}
+        {activeView.view_type === 'board' ? <DatabaseBoard {...commonViewProps} onCommit={commitRowValue} /> : null}
         {activeView.view_type === 'calendar' ? <DatabaseCalendar rows={visibleRows} properties={properties.data} onOpenRow={(row) => setSelectedRowId(row.id)} /> : null}
         {activeView.view_type === 'gallery' ? <DatabaseGallery {...commonViewProps} /> : null}
       </div>
     </> : null}
-    <RecordDetailPanel row={selectedRow} properties={properties.data} members={members.data} userId={user.id} canShare={Boolean(selectedRow && (selectedRow.created_by === user.id || role === 'OWNER' || role === 'ADMIN'))} onClose={() => setSelectedRowId(null)} />
+    <RecordDetailPanel row={selectedRow} properties={properties.data} members={members.data} userId={user.id} canEdit={canWrite} canShare={Boolean(selectedRow && (selectedRow.created_by === user.id || role === 'OWNER' || role === 'ADMIN'))} onCommit={commitRowValue} onClose={() => setSelectedRowId(null)} />
     <AddPropertyModal open={propertyModal} onClose={() => setPropertyModal(false)} onCreate={async (name, type, config) => { await addProperty.mutateAsync({ name, type, config }) }} />
     <AddViewModal open={viewModal} onClose={() => setViewModal(false)} onCreate={addNewView} />
     <CollectionShareDialog open={shareModal} databaseId={databaseId ?? ''} databaseName={database.data?.name ?? ''} onClose={() => setShareModal(false)} />

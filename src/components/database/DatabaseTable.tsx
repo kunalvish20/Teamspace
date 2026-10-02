@@ -5,13 +5,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DatabaseProperty, DatabaseRow, DatabaseView, Json } from '../../types/database.types'
 import type { MemberWithProfile } from '../../types/domain'
 import { filterAndSortRows, parseViewFilters, parseViewSorts, propertyConfig } from '../../utils/database'
-import { archiveProperty, renameProperty, updateProperty, updateView } from '../../services/database.service'
+import { archiveProperty, renameProperty, updateProperty } from '../../services/database.service'
 import { databaseKeys } from '../../features/database/queries'
 import { DatabaseCell } from './DatabaseCell'
 import { PropertyHeader } from './PropertyHeader'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { useToast } from '../ui/Toast'
+import { usePropertyPointerReorder } from './usePropertyPointerReorder'
 
 interface Props {
   databaseId: string
@@ -26,13 +27,17 @@ interface Props {
   onCreateProperty: () => void
   onArchiveRow: (row: DatabaseRow) => void
   onOpenRow: (row: DatabaseRow) => void
-  onReorderProperties: (sourceId: string, targetId: string) => void
+  onReorderProperties?: (sourceId: string, targetId: string) => void
+  /** Schema (rename/configure/archive/reorder properties) is an owner capability. */
+  canEditSchema?: boolean
+  /** Column width persistence. Omit for read-only contexts that must not write the view. */
+  onPersistWidths?: (propertyWidths: Json) => void
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
   onLoadMore?: () => void
 }
 
-export function DatabaseTable({ databaseId, rows, properties, view, members, search, canWrite, onCommit, onCreateRow, onCreateProperty, onArchiveRow, onOpenRow, onReorderProperties, hasNextPage, isFetchingNextPage, onLoadMore }: Props) {
+export function DatabaseTable({ databaseId, rows, properties, view, members, search, canWrite, onCommit, onCreateRow, onCreateProperty, onArchiveRow, onOpenRow, onReorderProperties, canEditSchema = true, onPersistWidths, hasNextPage, isFetchingNextPage, onLoadMore }: Props) {
   const queryClient = useQueryClient()
   const { push } = useToast()
   const [rowToArchive, setRowToArchive] = useState<DatabaseRow | null>(null)
@@ -56,17 +61,25 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
   }, [properties, view.property_widths])
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(initialSizing)
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialVisibility)
+  const handlePointerReorder = useCallback((sourceId: string, targetId: string) => {
+    if (canEditSchema && onReorderProperties) onReorderProperties(sourceId, targetId)
+  }, [canEditSchema, onReorderProperties])
+  const pointerReorder = usePropertyPointerReorder(canEditSchema && Boolean(onReorderProperties), handlePointerReorder)
   useEffect(() => setColumnVisibility(initialVisibility), [initialVisibility])
   useEffect(() => setColumnSizing(initialSizing), [initialSizing])
 
   useEffect(() => {
-    if (!canWrite || JSON.stringify(columnSizing) === JSON.stringify(initialSizing)) return
+    if (!onPersistWidths || JSON.stringify(columnSizing) === JSON.stringify(initialSizing)) return
     const timer = window.setTimeout(() => {
       const widths = Object.fromEntries(Object.entries(columnSizing).map(([key, value]) => [key, Math.round(value)]))
-      void updateView(view.id, { property_widths: widths }).catch(() => undefined)
+      try {
+        onPersistWidths(widths as unknown as Json)
+      } catch {
+        // Layout persistence is best-effort.
+      }
     }, 600)
     return () => window.clearTimeout(timer)
-  }, [columnSizing, initialSizing, view.id, canWrite])
+  }, [columnSizing, initialSizing, onPersistWidths])
 
   const propertyMutation = useMutation({
     mutationFn: async (action: { type: 'rename'; propertyId: string; name: string } | { type: 'archive'; propertyId: string } | { type: 'configure'; propertyId: string; config: Json }) => { if (action.type === 'rename') return renameProperty(action.propertyId, action.name); if (action.type === 'archive') return archiveProperty(action.propertyId); return updateProperty(action.propertyId, { config: action.config }) },
@@ -84,9 +97,9 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
     event.preventDefault()
     const sourceId = event.dataTransfer.getData('text/plain') || draggingPropertyId
     setDraggingPropertyId(null)
-    if (!sourceId || sourceId === targetId) return
+    if (!canEditSchema || !onReorderProperties || !sourceId || sourceId === targetId) return
     onReorderProperties(sourceId, targetId)
-  }, [draggingPropertyId, onReorderProperties])
+  }, [canEditSchema, draggingPropertyId, onReorderProperties])
 
   const displayRows = useMemo(() => filterAndSortRows(rows, properties, search, parseViewFilters(view.filters), parseViewSorts(view.sorts)), [rows, properties, search, view.filters, view.sorts])
   const columns = useMemo<ColumnDef<DatabaseRow>[]>(() => [
@@ -102,32 +115,33 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
         return (
           <PropertyHeader
             property={property}
-            canEdit={canWrite}
-            canMoveLeft={Boolean(previous)}
-            canMoveRight={Boolean(next)}
+            canEdit={canEditSchema}
+            canMoveLeft={canEditSchema && Boolean(previous)}
+            canMoveRight={canEditSchema && Boolean(next)}
             onRename={(name) => propertyMutation.mutate({ type: 'rename', propertyId: property.id, name })}
             onConfigure={() => setConfiguringProperty(property)}
             onArchive={() => propertyMutation.mutate({ type: 'archive', propertyId: property.id })}
             onMoveLeft={() => {
-              if (previous) onReorderProperties(property.id, previous.id)
+              if (previous && onReorderProperties) onReorderProperties(property.id, previous.id)
             }}
             onMoveRight={() => {
-              if (next) onReorderProperties(property.id, next.id)
+              if (next && onReorderProperties) onReorderProperties(property.id, next.id)
             }}
-            onDragStart={(event) => startPropertyDrag(event, property.id)}
-            onDragEnd={() => setDraggingPropertyId(null)}
+            onDragStart={canEditSchema ? (event) => startPropertyDrag(event, property.id) : undefined}
+            onDragEnd={canEditSchema ? () => setDraggingPropertyId(null) : undefined}
+            onPointerReorder={canEditSchema ? (event) => pointerReorder.startPointerDrag(event, property.id) : undefined}
             onDragOver={(event) => {
               if (draggingPropertyId && draggingPropertyId !== property.id) event.preventDefault()
             }}
             onDrop={(event) => dropProperty(event, property.id)}
-            isDragging={draggingPropertyId === property.id}
+            isDragging={draggingPropertyId === property.id || pointerReorder.draggingId === property.id}
           />
         )
       },
     })),
     {
       id: '__actions', size: 44, minSize: 44, maxSize: 44,
-      header: () => canWrite ? (
+      header: () => canWrite && canEditSchema ? (
         <button
           type="button"
           onClick={onCreateProperty}
@@ -139,7 +153,7 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
         </button>
       ) : null,
     },
-  ], [properties, initialSizing, canWrite, propertyMutation, onCreateProperty, onReorderProperties, draggingPropertyId, startPropertyDrag, dropProperty])
+  ], [properties, initialSizing, canWrite, canEditSchema, propertyMutation, onCreateProperty, onReorderProperties, draggingPropertyId, pointerReorder, startPropertyDrag, dropProperty])
 
   const table = useReactTable({
     data: displayRows,

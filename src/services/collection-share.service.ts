@@ -35,6 +35,9 @@ type CollectionShareRpc = {
   rpc(functionName: 'revoke_collection_share', args: { p_share_id: string }): RpcResult<null>
   rpc(functionName: 'get_shared_collection', args: { p_link_id: string }): RpcResult<SharedCollectionBundle>
   rpc(functionName: 'update_shared_collection_value', args: { p_link_id: string; p_row_id: string; p_property_id: string; p_value: Json | null }): RpcResult<DatabaseRow>
+  rpc(functionName: 'create_shared_collection_row', args: { p_link_id: string; p_data: Json }): RpcResult<DatabaseRow>
+  rpc(functionName: 'archive_shared_collection_row', args: { p_link_id: string; p_row_id: string }): RpcResult<DatabaseRow>
+  rpc(functionName: 'update_shared_collection_view_layout', args: { p_link_id: string; p_view_id: string; p_property_widths: Json }): RpcResult<DatabaseView>
 }
 
 const collectionShareRpc = supabase as unknown as CollectionShareRpc
@@ -94,4 +97,27 @@ export async function updateSharedCollectionValue(linkId: string, rowId: string,
   const { data, error } = await collectionShareRpc.rpc('update_shared_collection_value', { p_link_id: linkId, p_row_id: rowId, p_property_id: propertyId, p_value: value ?? null })
   if (error || !data) throw new Error('Could not update this record.')
   return data
+}
+
+export async function createSharedCollectionRow(linkId: string, data: Record<string, Json | undefined> = {}): Promise<DatabaseRow> {
+  const payload: Record<string, Json> = {}
+  for (const [key, value] of Object.entries(data)) if (value !== undefined) payload[key] = value
+  const { data: row, error } = await collectionShareRpc.rpc('create_shared_collection_row', { p_link_id: linkId, p_data: payload })
+  if (error) throw new Error(error.message || 'Could not add a record.')
+  if (!row) throw new Error('Could not add a record.')
+  return row
+}
+
+export async function archiveSharedCollectionRow(linkId: string, rowId: string): Promise<DatabaseRow> {
+  const { data: row, error } = await collectionShareRpc.rpc('archive_shared_collection_row', { p_link_id: linkId, p_row_id: rowId })
+  if (error) throw new Error(error.message || 'Could not archive this record.')
+  if (!row) throw new Error('Could not archive this record.')
+  return row
+}
+
+export async function updateSharedCollectionViewLayout(linkId: string, viewId: string, propertyWidths: Json): Promise<DatabaseView> {
+  const { data: view, error } = await collectionShareRpc.rpc('update_shared_collection_view_layout', { p_link_id: linkId, p_view_id: viewId, p_property_widths: propertyWidths })
+  if (error) throw new Error(error.message || 'Could not save the layout.')
+  if (!view) throw new Error('Could not save the layout.')
+  return view
 }

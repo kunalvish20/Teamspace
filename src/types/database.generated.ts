@@ -39,6 +39,82 @@ export type Database = {
   }
   public: {
     Tables: {
+      collection_share_links: {
+        Row: {
+          created_at: string
+          created_by: string
+          database_id: string
+          id: string
+          revoked_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          database_id: string
+          id?: string
+          revoked_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          database_id?: string
+          id?: string
+          revoked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_share_links_database_id_fkey"
+            columns: ["database_id"]
+            isOneToOne: true
+            referencedRelation: "workspace_databases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collection_shares: {
+        Row: {
+          created_at: string
+          created_by: string
+          database_id: string
+          grantee_email: string
+          grantee_user_id: string | null
+          id: string
+          permission: string
+          revoked_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          database_id: string
+          grantee_email: string
+          grantee_user_id?: string | null
+          id?: string
+          permission: string
+          revoked_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          database_id?: string
+          grantee_email?: string
+          grantee_user_id?: string | null
+          id?: string
+          permission?: string
+          revoked_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_shares_database_id_fkey"
+            columns: ["database_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_databases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       database_properties: {
         Row: {
           archived_at: string | null
@@ -795,6 +871,65 @@ export type Database = {
         Args: { p_body: string; p_link_id: string }
         Returns: Json
       }
+      archive_shared_collection_row: {
+        Args: { p_link_id: string; p_row_id: string }
+        Returns: Json
+      }
+      create_shared_collection_row: {
+        Args: { p_data?: Json; p_link_id: string }
+        Returns: Json
+      }
+      ensure_collection_share_link: {
+        Args: { p_database_id: string }
+        Returns: string
+      }
+      grant_collection_share: {
+        Args: {
+          p_database_id: string
+          p_email: string
+          p_permission: string
+        }
+        Returns: {
+          link_id: string
+          share_id: string
+        }[]
+      }
+      list_collection_shares: {
+        Args: { p_database_id: string }
+        Returns: {
+          display_name: string | null
+          email: string
+          id: string | null
+          is_owner: boolean
+          permission: string
+        }[]
+      }
+      revoke_collection_share: {
+        Args: { p_share_id: string }
+        Returns: undefined
+      }
+      update_collection_share: {
+        Args: { p_permission: string; p_share_id: string }
+        Returns: undefined
+      }
+      update_shared_collection_value: {
+        Args: {
+          p_link_id: string
+          p_property_id: string
+          p_row_id: string
+          p_value: Json
+        }
+        Returns: Json
+      }
+      update_shared_collection_view_layout: {
+        Args: {
+          p_link_id: string
+          p_property_widths: Json
+          p_view_id: string
+        }
+        Returns: Json
+      }
+      get_shared_collection: { Args: { p_link_id: string }; Returns: Json }
       create_workspace: {
         Args: {
           p_create_default_crm?: boolean

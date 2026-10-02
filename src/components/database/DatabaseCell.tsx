@@ -28,18 +28,20 @@ export function DatabaseCell({ row, property, members, disabled, onCommit, onOpe
     return (
       <div className="group/title-cell flex h-full min-w-0 items-center pr-1">
         <div className="min-w-0 flex-1"><TextCell value={typeof raw === 'string' ? raw : ''} disabled={disabled} onCommit={commit} /></div>
-        <button
-          type="button"
-          onClick={() => onOpenRow?.(row)}
-          aria-label="Open in side peek"
-          className="group/open relative ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded border border-transparent px-1.5 text-[10px] font-semibold uppercase leading-none text-neutral-500 opacity-0 shadow-sm transition-all duration-150 hover:border-neutral-300 hover:bg-white hover:text-neutral-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-700 group-hover/title-cell:opacity-100"
-        >
-          <PanelRightOpen size={12} strokeWidth={2} />
-          Open
-          <span className="pointer-events-none absolute bottom-full right-0 mb-2 whitespace-nowrap rounded bg-neutral-900 px-2 py-1 text-[11px] font-medium normal-case text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/open:opacity-100 group-focus-visible/open:opacity-100">
-            Open in side peek
-          </span>
-        </button>
+        {onOpenRow ? (
+          <button
+            type="button"
+            onClick={() => onOpenRow(row)}
+            aria-label="Open in side peek"
+            className="group/open relative ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded border border-transparent px-1.5 text-[10px] font-semibold uppercase leading-none text-neutral-500 opacity-0 shadow-sm transition-all duration-150 hover:border-neutral-300 hover:bg-white hover:text-neutral-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-700 group-hover/title-cell:opacity-100"
+          >
+            <PanelRightOpen size={12} strokeWidth={2} />
+            Open
+            <span className="pointer-events-none absolute bottom-full right-0 mb-2 whitespace-nowrap rounded bg-neutral-900 px-2 py-1 text-[11px] font-medium normal-case text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/open:opacity-100 group-focus-visible/open:opacity-100">
+              Open in side peek
+            </span>
+          </button>
+        ) : null}
       </div>
     )
   }
