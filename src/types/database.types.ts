@@ -152,6 +152,26 @@ export interface RowComment {
   updated_at: string
 }
 
+export interface CollectionShareLink {
+  id: string
+  database_id: string
+  created_by: string
+  created_at: string
+  revoked_at: string | null
+}
+
+export interface CollectionShare {
+  id: string
+  database_id: string
+  grantee_email: string
+  grantee_user_id: string | null
+  permission: 'view' | 'edit' | 'admin'
+  created_by: string
+  created_at: string
+  updated_at: string
+  revoked_at: string | null
+}
+
 export interface WorkspacePage {
   id: string
   workspace_id: string
@@ -208,6 +228,8 @@ export interface Database {
       workspace_pages: Table<WorkspacePage, Pick<WorkspacePage, 'workspace_id' | 'title' | 'created_by' | 'updated_by'> & Partial<WorkspacePage>, Partial<WorkspacePage>>
       page_blocks: Table<PageBlock, Pick<PageBlock, 'workspace_id' | 'page_id' | 'block_type' | 'created_by' | 'updated_by'> & Partial<PageBlock>, Partial<PageBlock>>
       page_favorites: Table<PageFavorite, Pick<PageFavorite, 'workspace_id' | 'page_id' | 'user_id'> & Partial<PageFavorite>, Partial<PageFavorite>>
+      collection_share_links: Table<CollectionShareLink, Pick<CollectionShareLink, 'database_id' | 'created_by'> & Partial<CollectionShareLink>, Partial<CollectionShareLink>>
+      collection_shares: Table<CollectionShare, Pick<CollectionShare, 'database_id' | 'grantee_email' | 'permission' | 'created_by'> & Partial<CollectionShare>, Partial<CollectionShare>>
     }
     Views: Record<string, never>
     Functions: {
@@ -231,6 +253,22 @@ export interface Database {
       query_database_rows: {
         Args: { p_database_id: string; p_workspace_id: string; p_filters?: Json; p_search?: string | null; p_limit?: number; p_offset?: number }
         Returns: DatabaseRow[]
+      }
+      ensure_collection_share_link: { Args: { p_database_id: string }; Returns: string }
+      list_collection_shares: {
+        Args: { p_database_id: string }
+        Returns: { id: string | null; email: string; permission: string; display_name: string | null; is_owner: boolean }[]
+      }
+      grant_collection_share: {
+        Args: { p_database_id: string; p_email: string; p_permission: string }
+        Returns: { link_id: string; share_id: string }[]
+      }
+      update_collection_share: { Args: { p_share_id: string; p_permission: string }; Returns: void }
+      revoke_collection_share: { Args: { p_share_id: string }; Returns: void }
+      get_shared_collection: { Args: { p_link_id: string }; Returns: Json }
+      update_shared_collection_value: {
+        Args: { p_link_id: string; p_row_id: string; p_property_id: string; p_value: Json }
+        Returns: Json
       }
     }
     Enums: {

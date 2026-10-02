@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type DragEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef, type ColumnSizingState, type VisibilityState } from '@tanstack/react-table'
 import { Archive, Plus } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DatabaseProperty, DatabaseRow, DatabaseView, Json } from '../../types/database.types'
 import type { MemberWithProfile } from '../../types/domain'
 import { filterAndSortRows, parseViewFilters, parseViewSorts, propertyConfig } from '../../utils/database'
-import { archiveProperty, renameProperty, updateProperty, updatePropertyPosition, updateView } from '../../services/database.service'
+import { archiveProperty, renameProperty, updateProperty, updateView } from '../../services/database.service'
 import { databaseKeys } from '../../features/database/queries'
 import { DatabaseCell } from './DatabaseCell'
 import { PropertyHeader } from './PropertyHeader'
@@ -26,18 +26,20 @@ interface Props {
   onCreateProperty: () => void
   onArchiveRow: (row: DatabaseRow) => void
   onOpenRow: (row: DatabaseRow) => void
+  onReorderProperties: (sourceId: string, targetId: string) => void
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
   onLoadMore?: () => void
 }
 
-export function DatabaseTable({ databaseId, rows, properties, view, members, search, canWrite, onCommit, onCreateRow, onCreateProperty, onArchiveRow, onOpenRow, hasNextPage, isFetchingNextPage, onLoadMore }: Props) {
+export function DatabaseTable({ databaseId, rows, properties, view, members, search, canWrite, onCommit, onCreateRow, onCreateProperty, onArchiveRow, onOpenRow, onReorderProperties, hasNextPage, isFetchingNextPage, onLoadMore }: Props) {
   const queryClient = useQueryClient()
   const { push } = useToast()
   const [rowToArchive, setRowToArchive] = useState<DatabaseRow | null>(null)
   const [configuringProperty, setConfiguringProperty] = useState<DatabaseProperty | null>(null)
   const [configCurrency, setConfigCurrency] = useState('INR')
   const [configOptions, setConfigOptions] = useState('')
+  const [draggingPropertyId, setDraggingPropertyId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!configuringProperty) return
@@ -67,10 +69,24 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
   }, [columnSizing, initialSizing, view.id, canWrite])
 
   const propertyMutation = useMutation({
-    mutationFn: async (action: { type: 'rename'; propertyId: string; name: string } | { type: 'archive'; propertyId: string } | { type: 'configure'; propertyId: string; config: Json } | { type: 'move'; propertyId: string; position: number; otherId: string; otherPosition: number }) => { if (action.type === 'rename') return renameProperty(action.propertyId, action.name); if (action.type === 'archive') return archiveProperty(action.propertyId); if (action.type === 'configure') return updateProperty(action.propertyId, { config: action.config }); await Promise.all([updatePropertyPosition(action.propertyId, action.position), updatePropertyPosition(action.otherId, action.otherPosition)]) },
+    mutationFn: async (action: { type: 'rename'; propertyId: string; name: string } | { type: 'archive'; propertyId: string } | { type: 'configure'; propertyId: string; config: Json }) => { if (action.type === 'rename') return renameProperty(action.propertyId, action.name); if (action.type === 'archive') return archiveProperty(action.propertyId); return updateProperty(action.propertyId, { config: action.config }) },
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: databaseKeys.properties(databaseId) }) },
     onError: (error) => push(error instanceof Error ? error.message : 'Property update failed.', 'error'),
   })
+
+  const startPropertyDrag = useCallback((event: DragEvent<HTMLButtonElement>, propertyId: string) => {
+    setDraggingPropertyId(propertyId)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', propertyId)
+  }, [])
+
+  const dropProperty = useCallback((event: DragEvent<HTMLDivElement>, targetId: string) => {
+    event.preventDefault()
+    const sourceId = event.dataTransfer.getData('text/plain') || draggingPropertyId
+    setDraggingPropertyId(null)
+    if (!sourceId || sourceId === targetId) return
+    onReorderProperties(sourceId, targetId)
+  }, [draggingPropertyId, onReorderProperties])
 
   const displayRows = useMemo(() => filterAndSortRows(rows, properties, search, parseViewFilters(view.filters), parseViewSorts(view.sorts)), [rows, properties, search, view.filters, view.sorts])
   const columns = useMemo<ColumnDef<DatabaseRow>[]>(() => [
@@ -93,27 +109,18 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
             onConfigure={() => setConfiguringProperty(property)}
             onArchive={() => propertyMutation.mutate({ type: 'archive', propertyId: property.id })}
             onMoveLeft={() => {
-              if (previous) {
-                propertyMutation.mutate({
-                  type: 'move',
-                  propertyId: property.id,
-                  position: previous.position,
-                  otherId: previous.id,
-                  otherPosition: property.position,
-                })
-              }
+              if (previous) onReorderProperties(property.id, previous.id)
             }}
             onMoveRight={() => {
-              if (next) {
-                propertyMutation.mutate({
-                  type: 'move',
-                  propertyId: property.id,
-                  position: next.position,
-                  otherId: next.id,
-                  otherPosition: property.position,
-                })
-              }
+              if (next) onReorderProperties(property.id, next.id)
             }}
+            onDragStart={(event) => startPropertyDrag(event, property.id)}
+            onDragEnd={() => setDraggingPropertyId(null)}
+            onDragOver={(event) => {
+              if (draggingPropertyId && draggingPropertyId !== property.id) event.preventDefault()
+            }}
+            onDrop={(event) => dropProperty(event, property.id)}
+            isDragging={draggingPropertyId === property.id}
           />
         )
       },
@@ -132,7 +139,7 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
         </button>
       ) : null,
     },
-  ], [properties, initialSizing, canWrite, propertyMutation, onCreateProperty])
+  ], [properties, initialSizing, canWrite, propertyMutation, onCreateProperty, onReorderProperties, draggingPropertyId, startPropertyDrag, dropProperty])
 
   const table = useReactTable({
     data: displayRows,

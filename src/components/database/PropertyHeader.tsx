@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type DragEvent, type FormEvent, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -7,6 +7,7 @@ import {
   CheckSquare,
   ChevronDown,
   DollarSign,
+  GripVertical,
   Hash,
   Link,
   List,
@@ -48,6 +49,11 @@ export function PropertyHeader({
   onArchive,
   onMoveLeft,
   onMoveRight,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+  isDragging,
 }: {
   property: DatabaseProperty
   canEdit: boolean
@@ -58,6 +64,11 @@ export function PropertyHeader({
   onArchive: () => void
   onMoveLeft: () => void
   onMoveRight: () => void
+  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void
+  onDragEnd?: () => void
+  onDragOver?: (event: DragEvent<HTMLDivElement>) => void
+  onDrop?: (event: DragEvent<HTMLDivElement>) => void
+  isDragging?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -72,7 +83,7 @@ export function PropertyHeader({
     setRenameOpen(true)
   }
 
-  function handleSaveRename(event: React.FormEvent) {
+  function handleSaveRename(event: FormEvent) {
     event.preventDefault()
     const trimmed = renameValue.trim()
     if (trimmed && trimmed !== property.name) {
@@ -93,7 +104,24 @@ export function PropertyHeader({
 
   return (
     <>
-      <div className="relative flex h-full items-center gap-1.5 px-2 text-xs font-medium text-neutral-500">
+      <div
+        className={`relative flex h-full items-center gap-1.5 px-2 text-xs font-medium text-neutral-500 ${isDragging ? 'opacity-45' : ''}`}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+      >
+        {canEdit ? (
+          <button
+            type="button"
+            draggable
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            title="Drag to reorder"
+            aria-label={`Drag ${property.name} property`}
+            className="cursor-grab rounded p-0.5 text-neutral-300 hover:bg-neutral-200 hover:text-neutral-600 active:cursor-grabbing"
+          >
+            <GripVertical size={13} />
+          </button>
+        ) : null}
         <Icon size={13} className="shrink-0 text-neutral-400" />
         <span className="min-w-0 flex-1 truncate">{property.name}</span>
         {canEdit ? (

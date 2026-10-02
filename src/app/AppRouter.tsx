@@ -22,6 +22,7 @@ const ProfilePage = lazy(() => import('../pages/ProfilePage').then((module) => (
 const WorkspaceSettingsPage = lazy(() => import('../pages/WorkspaceSettingsPage').then((module) => ({ default: module.WorkspaceSettingsPage })))
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })))
 const SharedRecordPage = lazy(() => import('../pages/SharedRecordPage').then((module) => ({ default: module.SharedRecordPage })))
+const SharedCollectionPage = lazy(() => import('../pages/SharedCollectionPage').then((module) => ({ default: module.SharedCollectionPage })))
 
 function Load({ children }: { children: ReactNode }) {
   return <Suspense fallback={<div className="grid min-h-[40vh] place-items-center"><Spinner className="h-5 w-5 text-neutral-400" /></div>}>{children}</Suspense>
@@ -40,6 +41,7 @@ export function AppRouter() {
       <Route path="/app" element={<Load><AppIndexPage /></Load>} />
       <Route path="/account/profile" element={<Load><ProfilePage /></Load>} />
       <Route path="/shared/record/:shareId" element={<Load><SharedRecordPage /></Load>} />
+      <Route path="/shared/collection/:shareId" element={<Load><SharedCollectionPage /></Load>} />
       <Route path="/app/:workspaceSlug" element={<WorkspaceLayout />}>
         <Route index element={<Load><WorkspaceHomePage /></Load>} />
         <Route path="page/:pageId" element={<Load><PagePage /></Load>} />
