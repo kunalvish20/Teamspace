@@ -1,4 +1,4 @@
-import { type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useState } from 'react'
+import { type FormEvent, type PointerEvent as ReactPointerEvent, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -49,12 +49,9 @@ export function PropertyHeader({
   onArchive,
   onMoveLeft,
   onMoveRight,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDrop,
   onPointerReorder,
   isDragging,
+  isDropTarget,
 }: {
   property: DatabaseProperty
   canEdit: boolean
@@ -65,12 +62,9 @@ export function PropertyHeader({
   onArchive: () => void
   onMoveLeft: () => void
   onMoveRight: () => void
-  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void
-  onDragEnd?: () => void
-  onDragOver?: (event: DragEvent<HTMLDivElement>) => void
-  onDrop?: (event: DragEvent<HTMLDivElement>) => void
   onPointerReorder?: (event: ReactPointerEvent<HTMLButtonElement>) => void
   isDragging?: boolean
+  isDropTarget?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -108,16 +102,11 @@ export function PropertyHeader({
     <>
       <div
         data-property-drop-id={property.id}
-        className={`relative flex h-full items-center gap-1.5 px-2 text-xs font-medium text-neutral-500 ${isDragging ? 'opacity-45' : ''}`}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
+        className={`relative flex h-full items-center gap-1.5 px-2 text-xs font-medium text-neutral-500 ${isDragging ? 'opacity-45' : ''} ${isDropTarget ? 'bg-blue-50 text-blue-700' : ''}`}
       >
         {canEdit ? (
           <button
             type="button"
-            draggable
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
             onPointerDown={onPointerReorder}
             title="Drag to reorder"
             aria-label={`Drag ${property.name} property`}

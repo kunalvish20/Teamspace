@@ -14,6 +14,7 @@ type Filters = { stages: string[]; owner: string; dateRange: DateRange; minimumV
 const EMPTY_FILTERS: Filters = { stages: [], owner: '', dateRange: 'all', minimumValue: '' }
 const CLOSED_RE = /(^|\s)(won|closed|complete|completed)(\s|$)/i
 const LOST_RE = /(^|\s)(lost|cancelled|canceled)(\s|$)/i
+const CHART_COLORS = ['#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#4b5563']
 
 function nameMatches(property: DatabaseProperty, words: string[]) {
   const name = property.name.toLowerCase()
@@ -90,6 +91,15 @@ export function DashboardView({ databaseId, workspaceId, properties, members, on
   const revenue = analytics.closedRows.reduce((sum, row) => sum + (numericValue(row, model.value) ?? 0), 0)
   const maxStageCount = Math.max(1, ...analytics.stageStats.map((stage) => stage.count))
   const maxStageValue = Math.max(1, ...analytics.stageStats.map((stage) => stage.value))
+  const pieItems = analytics.stageStats.filter((stage) => stage.count > 0)
+  const pieTotal = pieItems.reduce((sum, stage) => sum + stage.count, 0)
+  let pieOffset = 0
+  const pieSlices = pieItems.map((stage, index) => {
+    const percent = pieTotal ? (stage.count / pieTotal) * 100 : 0
+    const slice = { ...stage, color: CHART_COLORS[index % CHART_COLORS.length], offset: pieOffset, percent }
+    pieOffset += percent
+    return slice
+  })
   const usefulProperties = [model.title, model.stage, model.value, properties.find((property) => property.property_type === 'email'), model.nextStep].filter((property, index, list): property is DatabaseProperty => Boolean(property) && list.indexOf(property) === index).slice(0, 5)
 
   function toggleStage(id: string) { setFilters((current) => ({ ...current, stages: current.stages.includes(id) ? current.stages.filter((item) => item !== id) : [...current.stages, id] })) }
@@ -112,7 +122,69 @@ export function DashboardView({ databaseId, workspaceId, properties, members, on
       </section>
 
       {!filteredRows.length ? <div className="mt-6 rounded-xl border border-neutral-200 bg-white py-16 text-center"><h2 className="text-sm font-semibold text-neutral-800">No records match these filters.</h2><Button className="mt-3" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</Button></div> : <>
-        {model.stage && model.stageOptions.length ? <section className="mt-6 rounded-xl border border-neutral-200 bg-white p-5"><div><h2 className="text-sm font-semibold text-neutral-900">Pipeline flow</h2><p className="mt-1 text-xs text-neutral-400">Current records across configured stages</p></div><div className="mt-5 flex min-w-0 gap-2 overflow-x-auto pb-2">{analytics.stageStats.map((stage, index) => <div key={stage.id} className="flex shrink-0 items-center"><button onClick={() => toggleStage(stage.id)} className="w-36 rounded-lg border border-neutral-200 px-3 py-3 text-left hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-700"><div className="truncate text-xs font-medium text-neutral-700">{stage.label}</div><div className="mt-2 text-lg font-semibold text-neutral-900">{stage.count}</div><div className="mt-0.5 text-[11px] text-neutral-400">{model.value ? compactCurrency(stage.value, model.currency) : 'Value unavailable'}</div></button>{index < analytics.stageStats.length - 1 ? <ArrowRight size={14} className="mx-1 text-neutral-300" /> : null}</div>)}</div></section> : null}
+        {model.stage && model.stageOptions.length ? (
+          <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(280px,380px)_1fr]">
+            <section className="rounded-xl border border-neutral-200 bg-white p-5">
+              <div>
+                <h2 className="text-sm font-semibold text-neutral-900">Pie chart</h2>
+                <p className="mt-1 text-xs text-neutral-400">Record distribution by {model.stage.name}</p>
+              </div>
+              <div className="mt-5 grid gap-5 sm:grid-cols-[150px_1fr] sm:items-center">
+                <div className="relative mx-auto h-36 w-36">
+                  {pieSlices.length ? (
+                    <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden="true">
+                      <circle cx="50" cy="50" r="36" fill="none" stroke="#f3f4f6" strokeWidth="18" />
+                      {pieSlices.map((slice) => {
+                        const circumference = 2 * Math.PI * 36
+                        return (
+                          <circle
+                            key={slice.id}
+                            cx="50"
+                            cy="50"
+                            r="36"
+                            fill="none"
+                            stroke={slice.color}
+                            strokeWidth="18"
+                            strokeDasharray={`${(slice.percent / 100) * circumference} ${circumference}`}
+                            strokeDashoffset={-(slice.offset / 100) * circumference}
+                          />
+                        )
+                      })}
+                    </svg>
+                  ) : (
+                    <div className="grid h-full w-full place-items-center rounded-full bg-neutral-50 text-center text-xs text-neutral-400">No stage data</div>
+                  )}
+                  {pieSlices.length ? (
+                    <div className="absolute inset-0 grid place-items-center text-center">
+                      <div>
+                        <div className="text-xl font-semibold text-neutral-900">{pieTotal}</div>
+                        <div className="text-[10px] uppercase text-neutral-400">records</div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  {pieSlices.map((slice) => (
+                    <button key={slice.id} onClick={() => toggleStage(slice.id)} className="grid w-full grid-cols-[10px_1fr_auto] items-center gap-2 rounded px-1.5 py-1 text-left text-xs hover:bg-neutral-50">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: slice.color }} />
+                      <span className="min-w-0 truncate text-neutral-700">{slice.label}</span>
+                      <span className="font-medium text-neutral-900">{Math.round(slice.percent)}%</span>
+                    </button>
+                  ))}
+                  {!pieSlices.length ? <div className="text-xs text-neutral-400">Add records with {model.stage.name} selected to see the chart.</div> : null}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-neutral-200 bg-white p-5">
+              <div>
+                <h2 className="text-sm font-semibold text-neutral-900">Pipeline flow</h2>
+                <p className="mt-1 text-xs text-neutral-400">Current records across configured stages</p>
+              </div>
+              <div className="mt-5 flex min-w-0 gap-2 overflow-x-auto pb-2">{analytics.stageStats.map((stage, index) => <div key={stage.id} className="flex shrink-0 items-center"><button onClick={() => toggleStage(stage.id)} className="w-36 rounded-lg border border-neutral-200 px-3 py-3 text-left hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-700"><div className="truncate text-xs font-medium text-neutral-700">{stage.label}</div><div className="mt-2 text-lg font-semibold text-neutral-900">{stage.count}</div><div className="mt-0.5 text-[11px] text-neutral-400">{model.value ? compactCurrency(stage.value, model.currency) : 'Value unavailable'}</div></button>{index < analytics.stageStats.length - 1 ? <ArrowRight size={14} className="mx-1 text-neutral-300" /> : null}</div>)}</div>
+            </section>
+          </div>
+        ) : null}
 
         <div className="mt-6 grid gap-5 lg:grid-cols-2">
           <section className="rounded-xl border border-neutral-200 bg-white p-5"><h2 className="text-sm font-semibold text-neutral-900">Records created trend</h2><p className="mt-1 text-xs text-neutral-400">Based on actual record creation dates</p><div className="mt-5 flex h-44 items-end gap-2 border-b border-neutral-200">{analytics.buckets.map((bucket, index) => { const max = Math.max(1, ...analytics.buckets.map((item) => item.value)); return <div key={`${bucket.label}-${index}`} className="group flex h-full min-w-0 flex-1 flex-col justify-end"><div title={`${bucket.label}: ${bucket.value} records`} className="mx-auto w-full max-w-10 rounded-t bg-neutral-300 transition-colors group-hover:bg-neutral-500" style={{ height: `${Math.max(bucket.value ? 8 : 2, (bucket.value / max) * 100)}%` }} /><div className="mt-2 truncate text-center text-[9px] text-neutral-400">{bucket.label}</div></div>})}</div></section>

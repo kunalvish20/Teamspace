@@ -1,4 +1,4 @@
-import { type DragEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef, type ColumnSizingState, type VisibilityState } from '@tanstack/react-table'
 import { Archive, Plus } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -44,7 +44,6 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
   const [configuringProperty, setConfiguringProperty] = useState<DatabaseProperty | null>(null)
   const [configCurrency, setConfigCurrency] = useState('INR')
   const [configOptions, setConfigOptions] = useState('')
-  const [draggingPropertyId, setDraggingPropertyId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!configuringProperty) return
@@ -87,20 +86,6 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
     onError: (error) => push(error instanceof Error ? error.message : 'Property update failed.', 'error'),
   })
 
-  const startPropertyDrag = useCallback((event: DragEvent<HTMLButtonElement>, propertyId: string) => {
-    setDraggingPropertyId(propertyId)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', propertyId)
-  }, [])
-
-  const dropProperty = useCallback((event: DragEvent<HTMLDivElement>, targetId: string) => {
-    event.preventDefault()
-    const sourceId = event.dataTransfer.getData('text/plain') || draggingPropertyId
-    setDraggingPropertyId(null)
-    if (!canEditSchema || !onReorderProperties || !sourceId || sourceId === targetId) return
-    onReorderProperties(sourceId, targetId)
-  }, [canEditSchema, draggingPropertyId, onReorderProperties])
-
   const displayRows = useMemo(() => filterAndSortRows(rows, properties, search, parseViewFilters(view.filters), parseViewSorts(view.sorts)), [rows, properties, search, view.filters, view.sorts])
   const columns = useMemo<ColumnDef<DatabaseRow>[]>(() => [
     ...properties.map((property): ColumnDef<DatabaseRow> => ({
@@ -127,14 +112,9 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
             onMoveRight={() => {
               if (next && onReorderProperties) onReorderProperties(property.id, next.id)
             }}
-            onDragStart={canEditSchema ? (event) => startPropertyDrag(event, property.id) : undefined}
-            onDragEnd={canEditSchema ? () => setDraggingPropertyId(null) : undefined}
             onPointerReorder={canEditSchema ? (event) => pointerReorder.startPointerDrag(event, property.id) : undefined}
-            onDragOver={(event) => {
-              if (draggingPropertyId && draggingPropertyId !== property.id) event.preventDefault()
-            }}
-            onDrop={(event) => dropProperty(event, property.id)}
-            isDragging={draggingPropertyId === property.id || pointerReorder.draggingId === property.id}
+            isDragging={pointerReorder.draggingId === property.id}
+            isDropTarget={pointerReorder.activeTargetId === property.id}
           />
         )
       },
@@ -153,7 +133,7 @@ export function DatabaseTable({ databaseId, rows, properties, view, members, sea
         </button>
       ) : null,
     },
-  ], [properties, initialSizing, canWrite, canEditSchema, propertyMutation, onCreateProperty, onReorderProperties, draggingPropertyId, pointerReorder, startPropertyDrag, dropProperty])
+  ], [properties, initialSizing, canWrite, canEditSchema, propertyMutation, onCreateProperty, onReorderProperties, pointerReorder])
 
   const table = useReactTable({
     data: displayRows,

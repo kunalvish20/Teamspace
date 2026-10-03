@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Database as DatabaseIcon, Share2 } from 'lucide-react'
+import { Database as DatabaseIcon, PieChart, Share2, Table2 } from 'lucide-react'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useWorkspaceOutlet } from '../features/workspace/useWorkspaceOutlet'
 import { databaseKeys, useDatabase, useDatabaseProperties, useDatabaseRows, useDatabaseViews } from '../features/database/queries'
@@ -57,11 +57,16 @@ export function DatabasePage() {
   const rows = useMemo(() => rowsQuery.data?.pages.flat() ?? [], [rowsQuery.data])
   const visibleRows = useMemo(() => properties.data && activeView ? filterAndSortRows(rows, properties.data, '', parseViewFilters(activeView.filters), parseViewSorts(activeView.sorts)) : rows, [rows, properties.data, activeView])
   const selectedRow = selectedRowId ? rows.find((row) => row.id === selectedRowId) ?? (dashboardRow?.id === selectedRowId ? dashboardRow : null) : null
+  const mainViewId = activeView?.id ?? views.data?.[0]?.id ?? ''
 
   const patchView = useMutation({ mutationFn: (patch: Parameters<typeof updateView>[1]) => { if (!activeView) throw new Error('No active view'); return updateView(activeView.id, patch) }, onSuccess: (saved) => { queryClient.setQueryData(databaseKeys.views(databaseId ?? ''), (current: typeof views.data) => current?.map((view) => view.id === saved.id ? saved : view)); void queryClient.invalidateQueries({ queryKey: ['database', databaseId, 'rows'] }) }, onError: (error) => push(error instanceof Error ? error.message : 'View update failed.', 'error') })
   const editView = useMutation({ mutationFn: ({ viewId, patch }: { viewId: string; patch: Partial<Pick<DatabaseView, 'name' | 'view_type'>> }) => updateView(viewId, patch), onSuccess: (saved) => { queryClient.setQueryData(databaseKeys.views(databaseId ?? ''), (current: typeof views.data) => current?.map((view) => view.id === saved.id ? saved : view)); void queryClient.invalidateQueries({ queryKey: ['database', databaseId, 'rows'] }) }, onError: (error) => push(error instanceof Error ? error.message : 'View update failed.', 'error') })
   const reorderProperties = useMutation({
-    mutationFn: async (orderedIds: string[]) => { await Promise.all(orderedIds.map((propertyId, position) => updatePropertyPosition(propertyId, position))) },
+    mutationFn: async (orderedIds: string[]) => {
+      for (const [position, propertyId] of orderedIds.entries()) {
+        await updatePropertyPosition(propertyId, position)
+      }
+    },
     onMutate: async (orderedIds) => {
       const key = databaseKeys.properties(databaseId ?? '')
       await queryClient.cancelQueries({ queryKey: key })
@@ -135,11 +140,24 @@ export function DatabasePage() {
           <h1 className="text-xl font-semibold tracking-tight text-neutral-900">{database.data.name}</h1>
           {database.data.description ? <p className="mt-1 text-xs text-neutral-500">{database.data.description}</p> : null}
         </div>
-        {canManage && database.data ? (
-          <Button size="sm" variant="ghost" onClick={() => setShareModal(true)}>
-            <Share2 size={14} /> Share
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            size="sm"
+            variant={dashboardMode ? 'secondary' : 'ghost'}
+            onClick={() => {
+              if (dashboardMode) navigate(mainViewId ? `/app/${workspace.slug}/database/${databaseId}/view/${mainViewId}` : `/app/${workspace.slug}/database/${databaseId}`)
+              else navigate(`/app/${workspace.slug}/database/${databaseId}?mode=dashboard`)
+            }}
+          >
+            {dashboardMode ? <Table2 size={14} /> : <PieChart size={14} />}
+            {dashboardMode ? 'Data' : 'Charts'}
           </Button>
-        ) : null}
+          {canManage && database.data ? (
+            <Button size="sm" variant="ghost" onClick={() => setShareModal(true)}>
+              <Share2 size={14} /> Share
+            </Button>
+          ) : null}
+        </div>
       </div>
     </div>
     <DatabaseViewTabs workspaceSlug={workspace.slug} databaseId={databaseId} views={views.data} canWrite={canWrite} onAddView={() => setViewModal(true)} onUpdateView={async (viewId, patch) => { await editView.mutateAsync({ viewId, patch }) }} />

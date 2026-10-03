@@ -1,5 +1,5 @@
-import { type DragEvent, useMemo, useState } from 'react'
-import { Eye, Filter, GripVertical, Search, SlidersHorizontal, SortAsc, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ArrowDown, ArrowUp, Eye, Filter, GripVertical, Search, SlidersHorizontal, SortAsc, X } from 'lucide-react'
 import type { DatabaseProperty, DatabaseView, Json } from '../../types/database.types'
 import type { ViewFilter, ViewSort } from '../../types/domain'
 import { parseViewFilters, parseViewSorts, propertyConfig } from '../../utils/database'
@@ -19,7 +19,6 @@ interface Props {
 
 export function DatabaseToolbar({ search, onSearch, view, properties, canWrite, onPatchView, onAddProperty, onReorderProperties }: Props) {
   const [panel, setPanel] = useState<'filter' | 'sort' | 'properties' | null>(null)
-  const [draggingPropertyId, setDraggingPropertyId] = useState<string | null>(null)
   const pointerReorder = usePropertyPointerReorder(canWrite, onReorderProperties)
   const filters = useMemo(() => parseViewFilters(view.filters), [view.filters])
   const sorts = useMemo(() => parseViewSorts(view.sorts), [view.sorts])
@@ -50,19 +49,6 @@ export function DatabaseToolbar({ search, onSearch, view, properties, canWrite, 
     const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
     onPatchView({ visible_property_ids: next as unknown as Json })
   }
-  function startPropertyDrag(event: DragEvent<HTMLDivElement>, propertyId: string) {
-    setDraggingPropertyId(propertyId)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', propertyId)
-  }
-  function dropProperty(event: DragEvent<HTMLLabelElement>, targetId: string) {
-    event.preventDefault()
-    const sourceId = event.dataTransfer.getData('text/plain') || draggingPropertyId
-    setDraggingPropertyId(null)
-    if (!sourceId || sourceId === targetId) return
-    onReorderProperties(sourceId, targetId)
-  }
-
   return (
     <div className="relative flex flex-wrap items-center gap-1.5 border-b border-neutral-200 px-3 sm:px-5 py-2">
       <div className="relative mr-auto min-w-32 max-w-sm flex-1 md:flex-none md:w-64"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search this view" className="h-8 w-full rounded-md border border-transparent bg-neutral-50 pl-8 pr-2 text-xs outline-none focus:border-neutral-200 focus:bg-white" /></div>
@@ -79,7 +65,69 @@ export function DatabaseToolbar({ search, onSearch, view, properties, canWrite, 
             <Button size="sm" onClick={addFilter} disabled={!canWrite}>Add filter</Button>
           </div> : null}
           {panel === 'sort' ? <div className="space-y-2">{sorts.map((sort, index) => <div key={`${sort.propertyId}-${index}`} className="flex items-center gap-2 rounded bg-neutral-50 px-2 py-1.5 text-xs"><span>{properties.find((property) => property.id === sort.propertyId)?.name ?? 'Property'} · {sort.direction}</span><button className="ml-auto text-neutral-400 hover:text-red-600" onClick={() => onPatchView({ sorts: sorts.filter((_, itemIndex) => itemIndex !== index) as unknown as Json })}><X size={13} /></button></div>)}<div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><select value={sortProperty} onChange={(event) => setSortProperty(event.target.value)} className="h-8 rounded border border-neutral-200 px-2 text-xs">{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select><select value={sortDirection} onChange={(event) => setSortDirection(event.target.value as ViewSort['direction'])} className="h-8 rounded border border-neutral-200 px-2 text-xs"><option value="asc">Ascending</option><option value="desc">Descending</option></select></div><Button size="sm" onClick={addSort} disabled={!canWrite}>Add sort</Button></div> : null}
-          {panel === 'properties' ? <div className="space-y-1">{properties.map((property) => { const visible = !visibleIds.length || visibleIds.includes(property.id); const isDragging = draggingPropertyId === property.id || pointerReorder.draggingId === property.id; return <label key={property.id} data-property-drop-id={property.id} onDragOver={(event) => { if (draggingPropertyId && draggingPropertyId !== property.id) event.preventDefault() }} onDrop={(event) => dropProperty(event, property.id)} className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50 ${isDragging ? 'opacity-45' : ''}`}>{canWrite ? <div draggable onPointerDown={(event) => pointerReorder.startPointerDrag(event, property.id)} onDragStart={(event) => startPropertyDrag(event, property.id)} onDragEnd={() => setDraggingPropertyId(null)} title="Drag to reorder" className="cursor-grab rounded p-0.5 text-neutral-300 hover:bg-neutral-200 hover:text-neutral-600 active:cursor-grabbing"><GripVertical size={13} /></div> : null}<input type="checkbox" disabled={property.property_type === 'title' || !canWrite} checked={visible} onChange={() => toggleProperty(property.id)} /><span className="flex-1">{property.name}</span></label> })}{canWrite ? <Button size="sm" className="mt-2" onClick={onAddProperty}><SlidersHorizontal size={13} /> Add property</Button> : null}</div> : null}
+          {panel === 'properties' ? (
+            <div className="space-y-1">
+              {properties.map((property, index) => {
+                const visible = !visibleIds.length || visibleIds.includes(property.id)
+                const previous = properties[index - 1]
+                const next = properties[index + 1]
+                const isDragging = pointerReorder.draggingId === property.id
+                const isDropTarget = pointerReorder.activeTargetId === property.id
+                return (
+                  <label
+                    key={property.id}
+                    data-property-drop-id={property.id}
+                    className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50 ${isDragging ? 'opacity-45' : ''} ${isDropTarget ? 'bg-blue-50 text-blue-700' : ''}`}
+                  >
+                    {canWrite ? (
+                      <button
+                        type="button"
+                        onPointerDown={(event) => pointerReorder.startPointerDrag(event, property.id)}
+                        title="Drag to reorder"
+                        aria-label={`Drag ${property.name} property`}
+                        className="cursor-grab rounded p-0.5 text-neutral-300 hover:bg-neutral-200 hover:text-neutral-600 active:cursor-grabbing"
+                      >
+                        <GripVertical size={13} />
+                      </button>
+                    ) : null}
+                    <input type="checkbox" disabled={property.property_type === 'title' || !canWrite} checked={visible} onChange={() => toggleProperty(property.id)} />
+                    <span className="min-w-0 flex-1 truncate">{property.name}</span>
+                    {canWrite ? (
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          title="Move up"
+                          disabled={!previous}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            if (previous) onReorderProperties(property.id, previous.id)
+                          }}
+                          className="rounded p-0.5 text-neutral-300 hover:bg-neutral-200 hover:text-neutral-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-300"
+                        >
+                          <ArrowUp size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          title="Move down"
+                          disabled={!next}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            if (next) onReorderProperties(property.id, next.id)
+                          }}
+                          className="rounded p-0.5 text-neutral-300 hover:bg-neutral-200 hover:text-neutral-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-300"
+                        >
+                          <ArrowDown size={13} />
+                        </button>
+                      </div>
+                    ) : null}
+                  </label>
+                )
+              })}
+              {canWrite ? <Button size="sm" className="mt-2" onClick={onAddProperty}><SlidersHorizontal size={13} /> Add property</Button> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
